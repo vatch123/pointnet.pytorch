@@ -85,10 +85,10 @@ class STNkd(nn.Module):
         return x
 
 class PointNetfeat(nn.Module):
-    def __init__(self, global_feat = True, feature_transform = False):
+    def __init__(self, input_channels=3, global_feat = True, feature_transform = False):
         super(PointNetfeat, self).__init__()
-        self.stn = STN3d()
-        self.conv1 = torch.nn.Conv1d(3, 64, 1)
+        self.stn = STNkd(k=input_channels)
+        self.conv1 = torch.nn.Conv1d(input_channels, 64, 1)
         self.conv2 = torch.nn.Conv1d(64, 128, 1)
         self.conv3 = torch.nn.Conv1d(128, 1024, 1)
         self.bn1 = nn.BatchNorm1d(64)
@@ -183,6 +183,38 @@ def feature_transform_regularizer(trans):
     loss = torch.mean(torch.norm(torch.bmm(trans, trans.transpose(2,1)) - I, dim=(1,2)))
     return loss
 
+
+class VisNet(nn.Module):
+    def __init__(self, k = 1):
+        super(VisNet, self).__init__()
+        self.k = k
+        self.map_feat = PointNetfeat(input_channels=2, global_feat=True, feature_transform=False)
+        self.vis_feat = PointNetfeat(input_channels=2, global_feat=False, feature_transform=False)
+        self.conv1 = torch.nn.Conv1d(2112, 512, 1)
+        self.conv2 = torch.nn.Conv1d(512, 256, 1)
+        self.conv3 = torch.nn.Conv1d(256, 128, 1)
+        self.conv4 = torch.nn.Conv1d(128, self.k, 1)
+        self.bn1 = nn.BatchNorm1d(512)
+        self.bn2 = nn.BatchNorm1d(256)
+        self.bn3 = nn.BatchNorm1d(128)
+
+    def forward(self, map, vis):
+        batchsize = vis.size()[0]
+        n_pts = vis.size()[2]
+        map, map_trans, map_trans_feat = self.map_feat(map)
+        vis, vis_trans, vis_trans_feat = self.vis_feat(vis)
+        map = map.view(-1, 1024, 1).repeat(1, 1, n_pts)
+        x = torch.cat([map, vis], 1)
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn2(self.conv2(x)))
+        x = F.relu(self.bn3(self.conv3(x)))
+        x = self.conv4(x)
+        x = x.transpose(2,1).contiguous()
+        x = x.view(-1,self.k)
+        x = x.view(batchsize, n_pts, self.k)
+        return x, map_trans, map_trans_feat, vis_trans, vis_trans_feat
+
+
 if __name__ == '__main__':
     sim_data = Variable(torch.rand(32,3,2500))
     trans = STN3d()
@@ -211,3 +243,9 @@ if __name__ == '__main__':
     seg = PointNetDenseCls(k = 3)
     out, _, _ = seg(sim_data)
     print('seg', out.size())
+
+    map_sim_data = Variable(torch.rand(32,3,2500))
+    vis_sim_data = Variable(torch.rand(32,3,200))
+    vis = VisNet(k = 1)
+    out, _, _, _, _ = vis(map_sim_data, vis_sim_data)
+    print('vis', out.size())

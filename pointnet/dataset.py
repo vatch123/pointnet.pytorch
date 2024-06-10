@@ -192,8 +192,11 @@ class ModelNetDataset(data.Dataset):
         return len(self.fns)
 
 if __name__ == '__main__':
-    dataset = sys.argv[1]
-    datapath = sys.argv[2]
+    # dataset = sys.argv[1]
+    # datapath = sys.argv[2]
+
+    dataset = 'shapenet'
+    datapath = '/home/vatch/PycharmProjects/Seek/sdf-pred/pointnet.pytorch/shapenetcore_partanno_segmentation_benchmark_v0'
 
     if dataset == 'shapenet':
         d = ShapeNetDataset(root = datapath, class_choice = ['Chair'])
